@@ -13,12 +13,17 @@ type Worker struct {
 	Chan chan interface{}
 }
 
-//NewWorker ...
+//NewWorker constructor
 func NewWorker(id int) *Worker {
 	return &Worker{ID: id, Chan: make(chan interface{})}
 }
 
+//JobFuncType type for the function used in Workders
+//    You can use DoJob(jobFunc) to pass the job function to run
 type JobFuncType func(w *Worker, payload interface{})
+
+//ResultFuncType is for the function you pride to accept the result coming back from jobs
+type ResultFuncType func(result interface{})
 
 //Workers ...
 type Workers struct {
@@ -27,12 +32,20 @@ type Workers struct {
 	Jobs            []string
 	CurrentJobIndex int
 	JobFunc         JobFuncType
+	ResultFunc      ResultFuncType
 }
 
+//DoJob add the func to Workers so all of the workers will run it
 func (ws *Workers) DoJob(jobFunc JobFuncType) {
 	ws.JobFunc = jobFunc
 }
 
+//ResultHandle add the func to Workers so all of the workers will run it
+func (ws *Workers) ResultHandle(resFunc ResultFuncType) {
+	ws.ResultFunc = resFunc
+}
+
+//AddWorker create a new Worker and add to Workers
 func (ws *Workers) AddWorker() {
 	length := len(ws.Workers)
 	length++
@@ -40,16 +53,17 @@ func (ws *Workers) AddWorker() {
 	ws.Workers = append(ws.Workers, *w)
 }
 
-//NewWorkers ...
+//NewWorkers constructor
 func NewWorkers(length int) *Workers {
 	ws := make([]Worker, length)
-	for i, _ := range ws {
+	for i := range ws {
 		ws[i] = *NewWorker(i)
 	}
 	ch := make(chan interface{})
 	return &Workers{Workers: ws, ChanResult: ch, Jobs: []string{}, CurrentJobIndex: 0}
 }
 
+//ToString is a test function to construct the string
 func (ws *Workers) ToString() string {
 	ids := []string{}
 	for _, v := range ws.Workers {
@@ -58,6 +72,7 @@ func (ws *Workers) ToString() string {
 	return strings.Join(ids, ",")
 }
 
+//Start is the function to start running jobs in the pool using all workers
 func (ws *Workers) Start() {
 	chanResult := ws.ChanResult
 	workers := ws.Workers
@@ -84,7 +99,9 @@ func (ws *Workers) Start() {
 					ws.CurrentJobIndex++
 					mutex.Unlock()
 					//fmt.Printf("%v\n", job)
-					ws.JobFunc(&w, job)
+					if ws.JobFunc != nil {
+						ws.JobFunc(&w, job)
+					}
 
 					chanResult <- fmt.Sprintf("job %d done", index)
 				}
@@ -94,7 +111,10 @@ func (ws *Workers) Start() {
 	}
 	go func() {
 		for result := range chanResult {
-			fmt.Printf("%v\n", result)
+			//fmt.Printf("%v\n", result)
+			if ws.ResultFunc != nil {
+				ws.ResultFunc(result)
+			}
 		}
 	}()
 	wg.Wait()
